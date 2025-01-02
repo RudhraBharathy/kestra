@@ -13,6 +13,7 @@
                                 id="importFlows"
                                 class="el-input__inner"
                                 type="file"
+                                accept=".zip, .yml, .yaml"
                                 @change="importFlows()"
                                 ref="file"
                             >
@@ -47,7 +48,10 @@
                     <KestraFilter
                         prefix="flows"
                         :include="['namespace', 'scope', 'labels']"
-                        :settings="{shown: true, charts: {shown: true, value: showChart, callback: onShowChartChange}}"
+                        :buttons="{
+                            refresh: {shown: false},
+                            settings: {shown: true, charts: {shown: true, value: showChart, callback: onShowChartChange}}
+                        }"
                     />
                 </template>
 
@@ -314,7 +318,7 @@
             const defaultNamespace = localStorage.getItem(storageKeys.DEFAULT_NAMESPACE);
             const query = {...to.query};
             if (defaultNamespace) {
-                query.namespace = defaultNamespace; 
+                query.namespace = defaultNamespace;
             } if (!query.scope) {
                 query.scope = ["USER"];
             }
@@ -498,8 +502,10 @@
             loadQuery(base) {
                 let queryFilter = this.queryWithFilter();
 
-                this.namespace && (queryFilter.namespace = this.namespace);
-                
+                if(this.namespace){
+                    queryFilter.namespace = this.namespace
+                }
+
                 return _merge(base, queryFilter)
             },
             loadStats() {
@@ -577,6 +583,6 @@
     }
 
     .flows-table  .el-table__cell {
-        vertical-align: middle;        
+        vertical-align: middle;
     }
 </style>

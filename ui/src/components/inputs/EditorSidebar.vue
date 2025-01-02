@@ -1,7 +1,7 @@
 <template>
     <div
         v-show="explorerVisible"
-        class="p-3 sidebar"
+        class="p-2 sidebar"
         @click="$refs.tree.setCurrentKey(undefined)"
         @contextmenu.prevent="onTabContextMenu"
     >
@@ -123,7 +123,7 @@
                         ? changeOpenedTabs({
                             action: 'open',
                             name: data.fileName,
-                            extension: data.fileName.split('.')[1],
+                            extension: data.fileName.split('.').pop(),
                             path: getPath(node),
                         })
                         : undefined
@@ -467,6 +467,16 @@
                     return a.fileName.localeCompare(b.fileName);
                 });
             },
+            getFileNameWithExtension(fileNameWithExtension) {
+                const lastDotIdx = fileNameWithExtension.lastIndexOf(".");
+
+                return lastDotIdx !== -1
+                    ? [
+                        fileNameWithExtension.slice(0, lastDotIdx),
+                        fileNameWithExtension.slice(lastDotIdx + 1),
+                    ]
+                    : [fileNameWithExtension, ""];
+            },
             renderNodes(items) {
                 if (this.items === undefined) {
                     this.items = [];
@@ -477,7 +487,9 @@
                     if (type === "Directory") {
                         this.addFolder({fileName});
                     } else if (type === "File") {
-                        const [fileName, extension] = items[i].fileName.split(".");
+                        const [fileName, extension] = this.getFileNameWithExtension(
+                            items[i].fileName,
+                        );
                         const file = {fileName, extension, leaf: true};
                         this.addFile({file});
                     }
@@ -509,7 +521,7 @@
                         })),
                     );
 
-                    // eslint-disable-next-line no-inner-declarations
+
                     const updateChildren = (items, path, newChildren) => {
                         items.forEach((item, index) => {
                             if (this.getPath(item.id) === path) {
@@ -547,7 +559,7 @@
                 this.changeOpenedTabs({
                     action: "open",
                     name: item.split("/").pop(),
-                    extension: item.split(".")[1],
+                    extension: item.split(".").pop(),
                     path: item,
                 });
 
@@ -562,9 +574,11 @@
                 this.$refs[reference].handleOpen();
             },
             dialogHandler() {
-                this.dialog.type === "file"
-                    ? this.addFile({creation: true})
-                    : this.addFolder(undefined, true);
+                if(this.dialog.type === "file"){
+                    this.addFile({creation: true})
+                } else {
+                    this.addFolder(undefined, true)
+                }
             },
             toggleDialog(isShown, type, node) {
                 if (isShown) {
@@ -625,7 +639,7 @@
                         new: this.getPath(draggedNode.data.id),
                         type: draggedNode.data.type,
                     });
-                } catch (e) {
+                } catch {
                     this.$refs.tree.remove(draggedNode.data.id);
                     this.$refs.tree.append(
                         draggedNode.data,
@@ -694,7 +708,8 @@
 
                             // Extract file details
                             const fileName = pathParts[pathParts.length - 1];
-                            const [name, extension] = fileName.split(".");
+                            const [name, extension] =
+                                this.getFileNameWithExtension(fileName);
 
                             // Read file content
                             const content = await this.readFile(file);
@@ -718,7 +733,9 @@
                         } else {
                             // Process files at root level (not in any folder)
                             const content = await this.readFile(file);
-                            const [name, extension] = file.name.split(".");
+                            const [name, extension] = this.getFileNameWithExtension(
+                                file.name,
+                            );
 
                             this.importFileDirectory({
                                 namespace:
@@ -742,7 +759,7 @@
                     this.$toast().success(
                         this.$t("namespace files.import.success"),
                     );
-                } catch (error) {
+                } catch {
                     this.$toast().error(this.$t("namespace files.import.error"));
                 } finally {
                     event.target.value = "";
@@ -759,14 +776,9 @@
                 let FILE;
 
                 if (creation) {
-                    const separateString = (str) => {
-                        const lastIndex = str.lastIndexOf(".");
-                        return lastIndex !== -1
-                            ? [str.slice(0, lastIndex), str.slice(lastIndex + 1)]
-                            : [str, ""];
-                    };
-
-                    const [fileName, extension] = separateString(this.dialog.name);
+                    const [fileName, extension] = this.getFileNameWithExtension(
+                        this.dialog.name,
+                    );
 
                     FILE = {fileName, extension, content: "", leaf: true};
                 } else {
@@ -931,8 +943,12 @@
                 }
 
                 if (!this.dialog.folder) {
-                    this.items.push(NEW);
-                    this.items = this.sorted(this.items);
+                    const firstFolder = NEW.fileName.split("/")[0];
+                    if (!this.items.find(item => item.fileName === firstFolder)) {
+                        NEW.fileName = firstFolder;
+                        this.items.push(NEW);
+                        this.items = this.sorted(this.items);
+                    }
                 } else {
                     const SELF = this;
                     (function pushItemToFolder(basePath = "", array) {
@@ -943,8 +959,35 @@
                                 folderPath === SELF.dialog.folder &&
                                 Array.isArray(item.children)
                             ) {
-                                item.children.push(NEW);
-                                item.children = SELF.sorted(item.children);
+                                // find the first node that is not present in the current tree and then add it.
+                                
+                                const paths = NEW.fileName.split("/");
+                                let index = 0;
+                                let UNCOMMON_NODE = item;
+
+                                while (UNCOMMON_NODE && index < paths.length) {
+                                    // if any of node's children have path's folder name move ahead;
+                                    if (index >= paths.length) break;
+
+                                    const nextNode = UNCOMMON_NODE.children?.find(item => item.fileName.toLowerCase() === paths[index].toLowerCase());
+
+                                    if (!nextNode) {
+                                        break;
+                                    }
+
+                                    index++;
+                                    UNCOMMON_NODE = nextNode;
+                                }
+
+                                // return as all folders are already present so no change required.
+                                if (index === paths.length) return true;
+
+                                // add the node with last folder name which is not present already.
+                                NEW.fileName = paths[index];
+
+                                if (!UNCOMMON_NODE.children) UNCOMMON_NODE.children = [];
+                                UNCOMMON_NODE.children.push(NEW);
+                                UNCOMMON_NODE.children = SELF.sorted(UNCOMMON_NODE.children);
                                 return true; // Return true if the folder is found and item is pushed
                             } else if (Array.isArray(item.children)) {
                                 if (
@@ -982,7 +1025,7 @@
                 try {
                     Utils.copy(path);
                     this.$toast().success(this.$t("namespace files.path.success"));
-                } catch (_error) {
+                } catch {
                     this.$toast().error(this.$t("namespace files.path.error"));
                 }
             },
@@ -1027,33 +1070,29 @@
 
 .el-tree {
     height: calc(100% - 64px);
-    overflow: hidden auto;
+    overflow: auto;
 
     .el-tree__empty-block {
         height: auto;
     }
 
-    &::-webkit-scrollbar {
-        width: 2px;
-    }
-
-    &::-webkit-scrollbar-track {
-        background: var(--card-bg);
-    }
-
     &::-webkit-scrollbar-thumb {
         background: var(--bs-primary);
-        border-radius: 0px;
+        border-radius: 5px;
+
+        html.dark & {
+            background:  var(--bs-primary);
+        }
     }
 
     .node {
         --el-tree-node-content-height: 36px;
         --el-tree-node-hover-bg-color: transparent;
         line-height: 36px;
+    }
 
-        .el-tree-node__content {
-            width: 100%;
-        }
+    .el-tree-node.is-current > .el-tree-node__content {
+            min-width: fit-content;
     }
 }
 </style>
@@ -1064,6 +1103,8 @@
 .sidebar {
     background: var(--card-bg);
     border-right: 1px solid var(--bs-border-color);
+    overflow-x: hidden;
+    min-width: calc(30% - 8px);
 
     .empty {
         position: relative;
@@ -1112,7 +1153,7 @@
         color: var(--el-text-color-regular);
 
         &:hover {
-            color: var(--el-text-color-primary);
+            color: var(--el-text-color-secondary);
         }
     }
 
